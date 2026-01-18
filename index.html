@@ -1,1 +1,157 @@
-<embed src="./menu.pdf" type="application/pdf" width="100%" height="100%" />
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menu</title>
+    <style>
+      :root {
+        --page-gap: 14px;
+      }
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Arial,
+          sans-serif;
+        background: #f5f5f5;
+      }
+      #viewer {
+        padding: var(--page-gap);
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .page {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+        margin: 0 0 var(--page-gap) 0;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .error {
+        color: #b00020;
+        padding: 14px;
+        background: #fff;
+        border-radius: 12px;
+      }
+      a {
+        color: inherit;
+      }
+      button {
+        border: 1px solid #ddd;
+        background: #fff;
+        border-radius: 10px;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="viewer"></main>
+
+    <script type="module">
+      // Version "latest" vue sur unpkg : 5.4.530 (janv. 2026). :contentReference[oaicite:0]{index=0}
+      import * as pdfjsLib from "https://unpkg.com/pdfjs-dist@5.4.530/build/pdf.mjs";
+
+      // Indispensable : le worker (sinon perfs mauvaises / erreurs selon navigateur)
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://unpkg.com/pdfjs-dist@5.4.530/build/pdf.worker.mjs";
+
+      const url = "./menu.pdf";
+      const viewer = document.getElementById("viewer");
+
+      let pdf = null;
+      let rendering = false;
+
+      function clearViewer() {
+        viewer.innerHTML = "";
+      }
+
+      function showError(msg, err) {
+        console.error(err || msg);
+        viewer.innerHTML = `<div class="error"><strong>Erreur :</strong> ${msg}</div>`;
+      }
+
+      function getScaleForPage(page) {
+        // On calcule une échelle pour que la page tienne en largeur dans le conteneur.
+        const containerWidth = Math.min(viewer.clientWidth, 1100) - 0;
+        const viewportAt1 = page.getViewport({ scale: 1 });
+        const scale = containerWidth / viewportAt1.width;
+        // Petit boost lisibilité mobile, sans exploser la mémoire
+        return Math.max(scale, 1);
+      }
+
+      async function renderAllPages() {
+        if (!pdf || rendering) return;
+        rendering = true;
+
+        try {
+          clearViewer();
+
+          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const scale = getScaleForPage(page);
+            const viewport = page.getViewport({ scale });
+
+            const pageWrap = document.createElement("div");
+            pageWrap.className = "page";
+
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d", { alpha: false });
+
+            // Canvas en pixels réels (net), affichage en CSS 100% (responsive)
+            canvas.width = Math.floor(viewport.width);
+            canvas.height = Math.floor(viewport.height);
+
+            pageWrap.appendChild(canvas);
+            viewer.appendChild(pageWrap);
+
+            await page.render({ canvasContext: ctx, viewport }).promise;
+          }
+        } catch (err) {
+          showError(
+            "Impossible d’afficher le PDF. Vérifie que menu.pdf est bien au bon endroit.",
+            err,
+          );
+        } finally {
+          rendering = false;
+        }
+      }
+
+      function debounce(fn, delay = 250) {
+        let t;
+        return (...args) => {
+          clearTimeout(t);
+          t = setTimeout(() => fn(...args), delay);
+        };
+      }
+
+      async function init() {
+        try {
+          pdf = await pdfjsLib.getDocument({ url }).promise;
+          await renderAllPages();
+        } catch (err) {
+          showError(
+            "Chargement du PDF impossible (lien, nom de fichier, ou permissions).",
+            err,
+          );
+        }
+      }
+
+      window.addEventListener(
+        "resize",
+        debounce(() => renderAllPages(), 350),
+      );
+
+      init();
+    </script>
+  </body>
+</html>
