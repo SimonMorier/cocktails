@@ -58,10 +58,8 @@
     <main id="viewer"></main>
 
     <script type="module">
-      // Version "latest" vue sur unpkg : 5.4.530 (janv. 2026). :contentReference[oaicite:0]{index=0}
       import * as pdfjsLib from "https://unpkg.com/pdfjs-dist@5.4.530/build/pdf.mjs";
 
-      // Indispensable : le worker (sinon perfs mauvaises / erreurs selon navigateur)
       pdfjsLib.GlobalWorkerOptions.workerSrc =
         "https://unpkg.com/pdfjs-dist@5.4.530/build/pdf.worker.mjs";
 
@@ -81,11 +79,9 @@
       }
 
       function getScaleForPage(page) {
-        // On calcule une échelle pour que la page tienne en largeur dans le conteneur.
         const containerWidth = Math.min(viewer.clientWidth, 1100) - 0;
         const viewportAt1 = page.getViewport({ scale: 1 });
         const scale = containerWidth / viewportAt1.width;
-        // Petit boost lisibilité mobile, sans exploser la mémoire
         return Math.max(scale, 1);
       }
 
@@ -107,7 +103,6 @@
             const canvas = document.createElement("canvas");
             const ctx = canvas.getContext("2d", { alpha: false });
 
-            // Canvas en pixels réels (net), affichage en CSS 100% (responsive)
             canvas.width = Math.floor(viewport.width);
             canvas.height = Math.floor(viewport.height);
 
@@ -117,10 +112,7 @@
             await page.render({ canvasContext: ctx, viewport }).promise;
           }
         } catch (err) {
-          showError(
-            "Impossible d’afficher le PDF. Vérifie que menu.pdf est bien au bon endroit.",
-            err,
-          );
+          showError("Impossible d’afficher le PDF.", err);
         } finally {
           rendering = false;
         }
@@ -139,10 +131,7 @@
           pdf = await pdfjsLib.getDocument({ url }).promise;
           await renderAllPages();
         } catch (err) {
-          showError(
-            "Chargement du PDF impossible (lien, nom de fichier, ou permissions).",
-            err,
-          );
+          showError("Chargement du PDF impossible.", err);
         }
       }
 
