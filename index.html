@@ -19,6 +19,25 @@
           sans-serif;
         background: #f5f5f5;
       }
+      header {
+        padding: 12px 14px;
+        background: white;
+        position: sticky;
+        top: 0;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+        z-index: 10;
+      }
+      header .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+      header .small {
+        opacity: 0.7;
+        font-size: 14px;
+      }
       #viewer {
         padding: var(--page-gap);
         max-width: 1100px;
@@ -55,20 +74,38 @@
     </style>
   </head>
   <body>
+    <header>
+      <div class="row">
+        <div>
+          <div><strong>Menu</strong></div>
+          <div class="small" id="status">Chargement…</div>
+        </div>
+        <div class="row">
+          <button id="rerender" type="button">Réadapter à l’écran</button>
+          <a class="small" href="./menu.pdf">Ouvrir le PDF</a>
+        </div>
+      </div>
+    </header>
+
     <main id="viewer"></main>
 
     <script type="module">
+      // PDF.js via CDN
       import * as pdfjsLib from "https://unpkg.com/pdfjs-dist@5.4.530/build/pdf.mjs";
-
       pdfjsLib.GlobalWorkerOptions.workerSrc =
         "https://unpkg.com/pdfjs-dist@5.4.530/build/pdf.worker.mjs";
 
       const url = "./menu.pdf";
       const viewer = document.getElementById("viewer");
+      const statusEl = document.getElementById("status");
+      const rerenderBtn = document.getElementById("rerender");
 
       let pdf = null;
       let rendering = false;
 
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
       function clearViewer() {
         viewer.innerHTML = "";
       }
@@ -76,12 +113,24 @@
       function showError(msg, err) {
         console.error(err || msg);
         viewer.innerHTML = `<div class="error"><strong>Erreur :</strong> ${msg}</div>`;
+        setStatus("Erreur");
+      }
+
+      function debounce(fn, delay = 250) {
+        let t;
+        return (...args) => {
+          clearTimeout(t);
+          t = setTimeout(() => fn(...args), delay);
+        };
       }
 
       function getScaleForPage(page) {
-        const containerWidth = Math.min(viewer.clientWidth, 1100) - 0;
+        // Scale pour que la page tienne en largeur dans le conteneur
+        const containerWidth = Math.min(viewer.clientWidth, 1100);
         const viewportAt1 = page.getViewport({ scale: 1 });
         const scale = containerWidth / viewportAt1.width;
+
+        // On évite les scales trop petits sur mobile
         return Math.max(scale, 1);
       }
 
@@ -91,6 +140,7 @@
 
         try {
           clearViewer();
+          setStatus(`Rendu des pages… (0 / ${pdf.numPages})`);
 
           for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
@@ -103,6 +153,7 @@
             const canvas = document.createElement("canvas");
             const ctx = canvas.getContext("2d", { alpha: false });
 
+            // Canvas en pixels réels
             canvas.width = Math.floor(viewport.width);
             canvas.height = Math.floor(viewport.height);
 
@@ -110,35 +161,56 @@
             viewer.appendChild(pageWrap);
 
             await page.render({ canvasContext: ctx, viewport }).promise;
+
+            setStatus(`Rendu des pages… (${pageNum} / ${pdf.numPages})`);
           }
+
+          setStatus(`OK — ${pdf.numPages} page(s)`);
         } catch (err) {
-          showError("Impossible d’afficher le PDF.", err);
+          showError(
+            "Impossible d’afficher le PDF. Vérifie que menu.pdf est bien au bon endroit.",
+            err,
+          );
         } finally {
           rendering = false;
         }
       }
 
-      function debounce(fn, delay = 250) {
-        let t;
-        return (...args) => {
-          clearTimeout(t);
-          t = setTimeout(() => fn(...args), delay);
-        };
-      }
-
       async function init() {
         try {
+          setStatus("Téléchargement du PDF…");
           pdf = await pdfjsLib.getDocument({ url }).promise;
           await renderAllPages();
         } catch (err) {
-          showError("Chargement du PDF impossible.", err);
+          showError(
+            "Chargement du PDF impossible (lien, nom de fichier, ou permissions).",
+            err,
+          );
         }
       }
 
-      window.addEventListener(
-        "resize",
-        debounce(() => renderAllPages(), 350),
-      );
+      // ✅ Bouton manuel
+      rerenderBtn.addEventListener("click", () => renderAllPages());
+
+      // ✅ Fix iOS Safari portrait :
+      // On NE rerender PAS sur resize (la barre d’adresse iOS déclenche resize pendant le scroll).
+      // On rerender seulement en cas de rotation.
+      window.addEventListener("orientationchange", () => {
+        // on laisse Safari stabiliser les dimensions avant de recalculer
+        setTimeout(() => renderAllPages(), 250);
+      });
+
+      // Si tu veux quand même gérer certains resizes (ex: split screen iPad),
+      // décommente et ça ne rerendera que si la LARGEUR change vraiment :
+      /*
+    let lastWidth = window.innerWidth;
+    window.addEventListener("resize", debounce(() => {
+      const w = window.innerWidth;
+      const widthChanged = Math.abs(w - lastWidth) > 5;
+      lastWidth = w;
+      if (widthChanged) renderAllPages();
+    }, 250));
+    */
 
       init();
     </script>
